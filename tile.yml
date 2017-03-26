@@ -6,18 +6,20 @@ description: Send BOSH VM Health logs to the Firehose
 packages:
 - name: loggregator
   type: bosh-release
-  path: https://bosh.io/d/github.com/cloudfoundry/loggregator?v=65
-- name: bosh-hm-forwarder
+  path: https://bosh.io/d/github.com/cloudfoundry/loggregator?v=77
+- name: consul
   type: bosh-release
-  path: https://bosh.io/d/github.com/cloudfoundry/bosh-hm-forwarder-release?v=1.0.11
+  path: https://bosh.io/d/github.com/cloudfoundry-incubator/consul-release?v=152
   jobs:
   - name: hm-forwarder
     label: HM Forwarder
     templates:
     - name: boshhmforwarder
-      release: bosh-hm-forwarder
+      release: loggregator
     - name: metron_agent
       release: loggregator
+    - name: consul_agent
+      release: consul
     memory: 4096
     ephemeral_disk: 8192
     cpu: 2
@@ -28,17 +30,34 @@ packages:
     properties:
       boshhmforwarder:
         incoming_port: 13321
+      consul:
+        encrypt_keys:
+        - (( ..cf.properties.consul_encrypt_key.value ))
+        ca_cert: (( $ops_manager.ca_certificate ))
+        agent_cert: (( ..cf.properties.consul_agent_cert.cert_pem ))
+        agent_key: (( ..cf.properties.consul_agent_cert.private_key_pem ))
+        agent:
+          domain: cf.internal
+          servers:
+            lan: (( ..cf.consul_server.ips ))
+      loggregator:
+        tls:
+          ca_cert: (( $ops_manager.ca_certificate ))
+          metron:
+            cert: (( ..cf.doppler.metron_tls_cert.cert_pem ))
+            key: (( ..cf.doppler.metron_tls_cert.private_key_pem ))
+        etcd:
+          require_ssl: false
+          machines:
+          - cf-etcd.service.cf.internal
+          ca_cert: (( $ops_manager.ca_certificate ))
       loggregator_endpoint:
-        shared_secret: (( ..cf.doppler.shared_secret_credentials.password ))
-      metron_endpoint:
         shared_secret: (( ..cf.doppler.shared_secret_credentials.password ))
       metron_agent:
         deployment: cf
-        zone: (( availability_zone ))
-      loggregator:
-        etcd:
-          machines: (( ..cf.etcd_server.ips ))
+      metron_endpoint:
+        shared_secret: (( ..cf.doppler.shared_secret_credentials.password ))
 
 requires_product_versions:
 - name: cf
-  version: '~> 1.7'
+  version: '~> 1.9'
